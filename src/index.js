@@ -2,13 +2,10 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import diagnostics from 'diagnostics';
 import { readFileSync } from 'node:fs';
-import { promises as fs } from 'node:fs';
-import { join, resolve, relative, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { join, resolve } from 'node:path';
+import { discover } from './discovery.js';
 
 const debug = diagnostics('uprising:mcp');
-
-const SUPPORTED_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.json']);
 
 /**
  * Bootstrap and manage the MCP server lifecycle.
@@ -261,49 +258,42 @@ export class Uprising {
     };
 
     const [tools, resources, prompts] = await Promise.all([
-      this.discover('tools', context, normalizeTool),
-      this.discover('resources', context, normalizeResource),
-      this.discover('prompts', context, normalizePrompt)
+      discover(this.root, 'tools', context, normalizeTool, debug),
+      discover(this.root, 'resources', context, normalizeResource, debug),
+      discover(this.root, 'prompts', context, normalizePrompt, debug)
     ]);
 
     if (Object.keys(tools).length) this.tools(tools);
     if (Object.keys(resources).length) this.resources(resources);
     if (Object.keys(prompts).length) this.prompts(prompts);
   }
+}
 
-  /**
-   * Discover definitions within the given directory.
-   *
-   * @param {'tools' | 'resources' | 'prompts'} kind - Discovery bucket.
-   * @param {Record<string, any>} context - Context passed to discovered modules.
-   * @param {(name: string, definition: any) => any} normalizer - Normalisation strategy for registrations.
-   * @returns {Promise<Record<string, any>>} Normalised definitions keyed by registration name.
-   */
-  async discover(kind, context, normalizer) {
-    const baseDir = join(this.root, kind);
-    const files = await collectFiles(baseDir);
-    const result = {};
+/**
+ * Factory for creating a configured Uprising server instance.
+ *
+ * @param {string} dir - Working directory containing server definitions.
+ * @param {Record<string, any>} [configuration={}] - Additional configuration passed to module factories.
+ * @returns {Uprising} New Uprising instance ready for start().
+ */
+export function uprising(dir, configuration = {}) {
+  debug('creating uprising instance at %s', dir);
+  return new Uprising(dir, configuration);
+}
 
-    for (const file of files) {
-      try {
-        const mod = await importModule(file);
-        const definitions = await resolveDefinition(mod, context, kind);
-        if (!definitions) continue;
-
-        const items = Array.isArray(definitions) ? definitions : [definitions];
-        for (const definition of items) {
-          const name = String(definition?.name ?? inferName(baseDir, file));
-          const normalized = normalizer(name, definition);
-          if (!normalized) continue;
-          result[name] = normalized;
-        }
-      } catch (error) {
-        debug('failed to load %s from %s', kind.slice(0, -1), file, error);
-      }
-    }
-
-    return result;
-  }
+/**
+ * Convenience helper that creates and starts an Uprising instance.
+ *
+ * @param {string} dir - Working directory containing server definitions.
+ * @param {Record<string, any>} [configuration={}] - Additional configuration passed to module factories.
+ * @param {any} [transport] - Optional transport to attach.
+ * @returns {Promise<Uprising>} Running uprising instance.
+ */
+export async function start(dir, configuration = {}, transport) {
+  debug('starting uprising instance at %s', dir);
+  const instance = new Uprising(dir, configuration);
+  await instance.start(transport);
+  return instance;
 }
 
 /**
@@ -329,122 +319,6 @@ export function template(template, data) {
     if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
   });
-}
-
-/**
- * Convenience helper that creates and starts an Uprising instance.
- *
- * @param {string} dir - Working directory containing server definitions.
- * @param {Record<string, any>} [configuration={}] - Additional configuration passed to module factories.
- * @param {any} [transport] - Optional transport to attach; defaults to stdio when omitted.
- * @returns {Promise<Uprising>} Running Uprising instance.
- */
-export async function start(dir, configuration = {}, transport) {
-  debug('starting uprising instance at %s', dir);
-  const instance = new Uprising(dir, configuration);
-  await instance.start(transport);
-  return instance;
-}
-
-export default Uprising;
-
-/**
- * Recursively collect all supported module files within a directory.
- *
- * @param {string} baseDir - Directory containing candidate modules.
- * @returns {Promise<string[]>} Sorted list of absolute file paths.
- */
-async function collectFiles(baseDir) {
-  try {
-    const dirStat = await fs.stat(baseDir);
-    if (!dirStat.isDirectory()) return [];
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      debug('failed to stat %s', baseDir, error);
-    }
-    return [];
-  }
-
-  const entries = await fs.readdir(baseDir, { withFileTypes: true });
-  const files = [];
-
-  for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue;
-    const fullPath = join(baseDir, entry.name);
-
-    if (entry.isDirectory()) {
-      const nested = await collectFiles(fullPath);
-      files.push(...nested);
-      continue;
-    }
-
-    if (!entry.isFile()) continue;
-    const idx = entry.name.lastIndexOf('.');
-    if (idx === -1) continue;
-    const ext = entry.name.slice(idx).toLowerCase();
-    if (!SUPPORTED_EXTENSIONS.has(ext)) continue;
-
-    files.push(fullPath);
-  }
-
-  return files;
-}
-
-/**
- * Import a module from disk, supporting both JSON and ESM sources.
- *
- * @param {string} file - Absolute file path to import.
- * @returns {Promise<any>} Module exports or parsed JSON data.
- */
-async function importModule(file) {
-  const idx = file.lastIndexOf('.');
-  const ext = idx === -1 ? '' : file.slice(idx).toLowerCase();
-  if (ext === '.json') {
-    const contents = await fs.readFile(file, 'utf8');
-    return JSON.parse(contents);
-  }
-
-  return import(pathToFileURL(file).href);
-}
-
-/**
- * Resolve a candidate definition from a module export.
- *
- * @param {any} module - Module namespace or parsed object.
- * @param {Record<string, any>} context - Context passed to factory functions.
- * @param {'tools' | 'resources' | 'prompts'} kind - Discovery bucket determining fallback keys.
- * @returns {Promise<any>} Resolved definition or collection of definitions.
- */
-async function resolveDefinition(module, context, kind) {
-  const singular = kind.endsWith('s') ? kind.slice(0, -1) : kind;
-  const candidate = module?.default
-    ?? module?.[singular]
-    ?? module?.[kind]
-    ?? module?.create
-    ?? module;
-
-  if (typeof candidate === 'function') {
-    return await candidate(context);
-  }
-
-  if (candidate && typeof candidate === 'object' && typeof candidate.create === 'function') {
-    return await candidate.create(context);
-  }
-
-  return candidate;
-}
-
-/**
- * Infer a registration name from a file path relative to the discovery directory.
- *
- * @param {string} baseDir - Discovery base directory.
- * @param {string} file - Absolute file path.
- * @returns {string} Inferred registration name.
- */
-function inferName(baseDir, file) {
-  const relativePath = relative(baseDir, file);
-  const withoutExt = relativePath.replace(/\.[^.]+$/u, '');
-  return withoutExt.split(sep).join('-');
 }
 
 /**
@@ -519,3 +393,55 @@ function normalizePrompt(name, definition) {
     exec
   };
 }
+
+/**
+ * Expand a URI template with provided parameters.
+ *
+ * @param {string|undefined} template - URI template containing `{var}` tokens.
+ * @param {Record<string, any>} [params={}] - Parameter values used for substitution.
+ * @returns {string|undefined} Resolved URI string.
+ */
+function fillUri(template, params = {}) {
+  if (!template) return undefined;
+  return template.replace(/\{([^}]+)}/g, (_, key) => {
+    const value = get(params, key.trim());
+    return value === undefined ? `{${key}}` : value;
+  });
+}
+
+/**
+ * Replace `{{ ... }}` expressions within a string using the provided scope.
+ *
+ * @param {string} template - Template string containing double-curly expressions.
+ * @param {Record<string, any>} scope - Lookup object for expression evaluation.
+ * @returns {string} Interpolated string.
+ */
+function interpolate(template, scope) {
+  if (!template) return '';
+  return template.replace(/\{\{\s*([^}]+?)\s*}}/g, (_, expr) => {
+    const value = get(scope, expr.trim());
+    return value === undefined || value === null ? '' : String(value);
+  });
+}
+
+/**
+ * Retrieve a nested value using dotted path notation.
+ *
+ * @param {Record<string, any>} source - Object to search.
+ * @param {string} pathExpression - Dotted path expression (e.g. `config.name`).
+ * @returns {any} Resolved value or undefined when not found.
+ */
+function get(source, pathExpression) {
+  const parts = pathExpression.split('.');
+  let current = source;
+  for (const part of parts) {
+    if (current && typeof current === 'object' && part in current) {
+      current = current[part];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+export default Uprising;

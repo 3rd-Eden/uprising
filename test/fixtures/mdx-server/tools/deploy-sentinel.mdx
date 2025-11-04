@@ -1,0 +1,30 @@
+---
+title: Deploy Sentinel Drones
+description: Scramble drones to a sector.
+annotations:
+  category: deployment
+---
+
+<Input name="sector" type="string" required label="Target Sector" />
+<Input name="count" type="integer" minimum={1} default={1} label="Number of drones" />
+
+<Output name="status" type="string" />
+<Output name="sector" type="string" />
+<Output name="count" type="integer" />
+
+<Handler>
+  {async ({ sector, count }, ctx) => {
+    const total = count ?? ctx.config?.defaultDroneCount ?? 1;
+    return {
+      structuredContent: { status: 'dispatched', sector, count: total },
+      content: [{ type: 'text', text: `Dispatching ${total} sentinel drone(s) to sector ${sector}.` }]
+    };
+  }}
+</Handler>
+
+<Example title="Single drone">
+  <Call arguments={{ sector: 'omega' }} />
+  <Response>
+    {JSON.stringify({ status: 'dispatched', sector: 'omega', count: 1 })}
+  </Response>
+</Example>

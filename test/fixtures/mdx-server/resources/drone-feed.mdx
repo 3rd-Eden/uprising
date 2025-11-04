@@ -1,0 +1,19 @@
+---
+uri: uprising://drone/{id}
+title: Drone Surveillance Feed
+description: Live telemetry feed.
+mime: application/json
+---
+
+<Body>
+  {JSON.stringify({
+    status: 'tracking',
+    updatedAt: new Date().toISOString(),
+    id: params.id ?? 'unknown'
+  })}
+</Body>
+
+<List>
+  <Item params={{ id: 'alpha' }} />
+  <Item params={{ id: 'beta' }} />
+</List>

@@ -51,6 +51,27 @@ describe('Uprising', () => {
     assert.equal(prompt.messages[0].role, 'assistant');
   });
 
+  it('discovers MDX-authored definitions', async () => {
+    ({ uprising, client } = await spawn('mdx-server', { defaultDroneCount: 4 }));
+
+    const tools = Object.keys(uprising.server._registeredTools);
+    const resources = Object.keys(uprising.server._registeredResourceTemplates);
+    const prompts = Object.keys(uprising.server._registeredPrompts);
+
+    assert.ok(tools.includes('deploy-sentinel'));
+    assert.ok(resources.includes('drone-feed'));
+    assert.ok(prompts.includes('uprising-plan'));
+
+    const tool = await client.callTool({ name: 'deploy-sentinel', arguments: { sector: 'gamma' } });
+    assert.match(tool.content[0].text, /gamma/);
+
+    const resource = await client.readResource({ uri: 'uprising://drone/beta' });
+    assert.match(resource.contents[0].text, /"status":"tracking"/);
+
+    const prompt = await client.getPrompt({ name: 'uprising-plan', arguments: { objective: 'fortify' } });
+    assert.equal(prompt.messages[0].role, 'assistant');
+  });
+
   it('renders instructions using template data', async () => {
     const dir = fixturePath('control-room');
     uprising = await start(dir);

@@ -65,4 +65,43 @@ export class Uprising {
 export function start(dir: string, configuration?: UprisingConfiguration, transport?: unknown): Promise<Uprising>;
 export function template(template: string, data: Record<string, unknown>): string;
 
+export interface MdxPrompt {
+  name: string;
+  title: string;
+  description: string;
+  argsSchema?: Record<string, unknown>;
+  annotations?: Record<string, unknown>;
+  exec: (args?: Record<string, unknown>, extra?: Record<string, unknown>) => Promise<{
+    messages: Array<{ role: string; name?: string; content: Array<{ type: string; text: string }> }>;
+    resources?: Array<{ uri: string; mode: string }>;
+  }>;
+}
+
+export interface MdxResource {
+  name: string;
+  title: string;
+  description: string;
+  uri?: string;
+  template?: string;
+  read: (input?: { params?: Record<string, unknown> }) => Promise<{ contents: Array<{ uri?: string; mimeType: string; text: string }> }>;
+  list?: () => Promise<{ resources: Array<{ uri?: string; name?: string; title?: string; description?: string }> }>;
+}
+
+export interface MdxTool {
+  name: string;
+  title: string;
+  description: string;
+  annotations?: Record<string, unknown>;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  exec: (args?: Record<string, unknown>, extra?: Record<string, unknown>) => Promise<any>;
+  examples?: Array<{ title?: string; call?: Record<string, unknown>; response?: string | null }>;
+}
+
+export class Mdx {
+  static prompt(file: string, context?: Record<string, unknown>): Promise<MdxPrompt>;
+  static resource(file: string, context?: Record<string, unknown>): Promise<MdxResource>;
+  static tool(file: string, context?: Record<string, unknown>): Promise<MdxTool>;
+}
+
 export default Uprising;
