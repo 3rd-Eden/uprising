@@ -1,0 +1,46 @@
+{
+  "name": "uprising",
+  "version": "0.0.0",
+  "description": "Filesystem-driven MCP server bootstrapper for tools, resources, and prompts.",
+  "keywords": [
+    "uprising",
+    "mcp",
+    "server",
+    "ai",
+    "model-context-protocol",
+    "automation",
+    "tooling"
+  ],
+  "homepage": "https://github.com/3rd-eden/uprising#readme",
+  "bugs": {
+    "url": "https://github.com/3rd-eden/uprising/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/3rd-eden/uprising.git"
+  },
+  "license": "MIT",
+  "author": "Arnout Kazemier",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": {
+      "import": "./index.js",
+      "default": "./index.js"
+    }
+  },
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "src"
+  ],
+  "scripts": {
+    "test": "node --test --experimental-test-coverage"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.0",
+    "diagnostics": "^3.0.0",
+    "zod": "^3.25.76"
+  }
+}
