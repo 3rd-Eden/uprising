@@ -1,9 +1,10 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import diagnostics from 'diagnostics';
 import { readFileSync } from 'node:fs';
-import path, { join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { discover } from './discovery.js';
+import { normalize } from './normalize.js';
 
 const debug = diagnostics('uprising:mcp');
 
@@ -258,9 +259,9 @@ export class Uprising {
     };
 
     const [tools, resources, prompts] = await Promise.all([
-      discover(this.root, 'tools', context, normalizeTool, debug),
-      discover(this.root, 'resources', context, (name, def, file, baseDir) => normalizeResource(name, def, file, baseDir), debug),
-      discover(this.root, 'prompts', context, normalizePrompt, debug)
+      discover(this.root, 'tools', context, (name, def, file) => normalize('tool', name, def, file), debug),
+      discover(this.root, 'resources', context, (name, def, file, baseDir) => normalize('resource', name, def, file, baseDir), debug),
+      discover(this.root, 'prompts', context, (name, def, file) => normalize('prompt', name, def, file), debug)
     ]);
 
     if (Object.keys(tools).length) this.tools(tools);
@@ -318,139 +319,6 @@ export function template(template, data) {
     if (value === undefined || value === null) return match;
     if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
-  });
-}
-
-/**
- * Normalise a tool definition into the structure required by the MCP server.
- *
- * @param {string} name - Registration name for the tool.
- * @param {any} definition - Raw definition exported by the module.
- * @returns {{ title: string, description: string, inputSchema?: unknown, exec: Function } | undefined} Normalised definition.
- */
-function normalizeTool(name, definition) {
-  const exec = definition?.exec ?? definition?.handler ?? definition?.run;
-  if (typeof exec !== 'function') return undefined;
-
-  return {
-    title: typeof definition?.title === 'string' ? definition.title : name,
-    description: typeof definition?.description === 'string' ? definition.description : '',
-    inputSchema: definition?.inputSchema,
-    exec
-  };
-}
-
-/**
- * Normalise a resource definition into the structure required by the MCP server.
- *
- * @param {string} name - Registration name for the resource.
- * @param {any} definition - Raw definition exported by the module.
- * @param {string} [file] - Optional source file path for URI inference.
- * @param {string} [baseDir] - Optional base directory for folder-based URI generation.
- * @returns {{ title: string, description: string, template: ResourceTemplate, read: Function } | undefined} Normalised definition.
- */
-function normalizeResource(name, definition, file, baseDir) {
-  const read = definition?.read ?? definition?.exec ?? definition?.handler;
-  let template = definition?.template ?? null;
-
-  if (template && typeof template === 'string') {
-    template = new ResourceTemplate(template, {
-      list: typeof definition?.list === 'function' ? definition.list : undefined,
-      complete: definition?.complete && typeof definition.complete === 'object' ? definition.complete : undefined
-    });
-  }
-
-  if (!template && typeof definition?.uri === 'string') {
-    template = new ResourceTemplate(definition.uri, {
-      list: typeof definition?.list === 'function' ? definition.list : undefined,
-      complete: definition?.complete && typeof definition.complete === 'object' ? definition.complete : undefined
-    });
-  }
-
-  // If no template/uri provided, infer from folder structure (like .mdx files)
-  if (!template && file && baseDir) {
-    const inferredUri = inferResourceUriFromPath(file, baseDir);
-    template = new ResourceTemplate(inferredUri, {
-      list: typeof definition?.list === 'function' ? definition.list : undefined,
-      complete: definition?.complete && typeof definition.complete === 'object' ? definition.complete : undefined
-    });
-  }
-
-  if (typeof read !== 'function' || !template) return undefined;
-
-  return {
-    title: typeof definition?.title === 'string' ? definition.title : name,
-    description: typeof definition?.description === 'string' ? definition.description : '',
-    template,
-    read
-  };
-}
-
-/**
- * Normalise a prompt definition into the structure required by the MCP server.
- *
- * @param {string} name - Registration name for the prompt.
- * @param {any} definition - Raw definition exported by the module.
- * @returns {{ title: string, description: string, argsSchema?: unknown, exec: Function } | undefined} Normalised definition.
- */
-function normalizePrompt(name, definition) {
-  const exec = definition?.exec ?? definition?.handler ?? definition?.run;
-  if (typeof exec !== 'function') return undefined;
-
-  return {
-    title: typeof definition?.title === 'string' ? definition.title : name,
-    description: typeof definition?.description === 'string' ? definition.description : '',
-    argsSchema: definition?.argsSchema,
-    exec
-  };
-}
-
-/**
- * Infer a resource URI from the file path relative to the base directory.
- * Follows Next.js-like folder structure conventions with dynamic segments.
- *
- * @param {string} file - Absolute path to the resource file.
- * @param {string} baseDir - Base directory for the resource type.
- * @returns {string} Inferred URI with resource:// scheme (e.g., "resource://api/users/{id}").
- */
-function inferResourceUriFromPath(file, baseDir) {
-  const relativePath = path.relative(baseDir, file);
-  const withoutExt = relativePath.replace(/\.[^.]+$/u, '');
-  const pathPart = withoutExt.split(path.sep).join('/');
-
-  // Convert [param] to {param} for Next.js-style dynamic segments
-  const withDynamicSegments = pathPart.replace(/\[([^\]]+)\]/g, '{$1}');
-
-  return `resource://${withDynamicSegments}`;
-}
-
-/**
- * Expand a URI template with provided parameters.
- *
- * @param {string|undefined} template - URI template containing `{var}` tokens.
- * @param {Record<string, any>} [params={}] - Parameter values used for substitution.
- * @returns {string|undefined} Resolved URI string.
- */
-function fillUri(template, params = {}) {
-  if (!template) return undefined;
-  return template.replace(/\{([^}]+)}/g, (_, key) => {
-    const value = get(params, key.trim());
-    return value === undefined ? `{${key}}` : value;
-  });
-}
-
-/**
- * Replace `{{ ... }}` expressions within a string using the provided scope.
- *
- * @param {string} template - Template string containing double-curly expressions.
- * @param {Record<string, any>} scope - Lookup object for expression evaluation.
- * @returns {string} Interpolated string.
- */
-function interpolate(template, scope) {
-  if (!template) return '';
-  return template.replace(/\{\{\s*([^}]+?)\s*}}/g, (_, expr) => {
-    const value = get(scope, expr.trim());
-    return value === undefined || value === null ? '' : String(value);
   });
 }
 
