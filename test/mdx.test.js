@@ -1,13 +1,14 @@
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { Mdx } from '../src/mdx.js';
 
 const fixtures = fileURLToPath(new URL('./fixtures/mdx-server', import.meta.url));
 
 const promptFile = path.join(fixtures, 'prompts', 'uprising-plan.mdx');
 const resourceFile = path.join(fixtures, 'resources', 'drone-feed.mdx');
+const nestedResourceFile = path.join(fixtures, 'resources', 'frontend', 'javascript.mdx');
 const toolFile = path.join(fixtures, 'tools', 'deploy-sentinel.mdx');
 
 describe('Mdx loader', () => {
@@ -32,6 +33,11 @@ describe('Mdx loader', () => {
 
     const list = await resource.list();
     assert.equal(list.resources.length, 2);
+
+    list.resources.forEach((item, index) => {
+      assert.ok(item.name, `Resource at index ${index} should have a name field`);
+      assert.ok(item.uri, `Resource at index ${index} should have a uri field`);
+    });
   });
 
   it('produces tool definitions from MDX', async () => {
@@ -44,5 +50,19 @@ describe('Mdx loader', () => {
     const output = await tool.exec({ sector: 'omega' }, {});
     assert.match(output.content[0].text, /omega/);
     assert.equal(output.structuredContent.count, 5);
+  });
+
+  it('infers resource URI from folder structure when not explicitly provided', async () => {
+    const baseDir = path.join(fixtures, 'resources');
+    const resource = await Mdx.resource(nestedResourceFile, { __baseDir: baseDir });
+
+    assert.equal(resource.uri, 'resource://frontend/javascript');
+    assert.equal(resource.template, 'resource://frontend/javascript');
+    assert.equal(resource.title, 'JavaScript Frontend Guide');
+    assert.equal(resource.description, 'Best practices for JavaScript frontend development');
+
+    const read = await resource.read({});
+    assert.equal(read.contents[0].mimeType, 'text/markdown');
+    assert.match(read.contents[0].text, /JavaScript Frontend Development/);
   });
 });

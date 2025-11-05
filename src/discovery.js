@@ -25,7 +25,7 @@ export async function discover(root, kind, context, normalizer, log) {
       const ext = path.extname(file).toLowerCase();
 
       if (ext === '.md' || ext === '.mdx') {
-        const definition = await fromMdx(file, context, kind);
+        const definition = await fromMdx(file, context, kind, baseDir);
         if (!definition) continue;
 
         const baseName = definition.name ?? label(baseDir, file);
@@ -43,7 +43,7 @@ export async function discover(root, kind, context, normalizer, log) {
       const items = Array.isArray(definitions) ? definitions : [definitions];
       for (const definition of items) {
         const candidateName = String(definition?.name ?? label(baseDir, file));
-        const normalized = normalizer(candidateName, definition);
+        const normalized = normalizer(candidateName, definition, file, baseDir);
         if (!normalized) continue;
         const name = normalized.name ?? candidateName;
         result[name] = { ...normalized, name };
@@ -148,18 +148,16 @@ async function pick(module, context, kind) {
  * @param {string} file - MDX file path.
  * @param {Record<string, any>} context - Context passed to the MDX renderer.
  * @param {'tools' | 'resources' | 'prompts'} kind - Discovery bucket type.
+ * @param {string} baseDir - Base directory for this discovery kind.
  * @returns {Promise<any>} Definition object or null when unsupported.
  */
-async function fromMdx(file, context, kind) {
-  if (kind === 'prompts') {
-    return await Mdx.prompt(file, context);
-  }
-  if (kind === 'resources') {
-    return await Mdx.resource(file, context);
-  }
-  if (kind === 'tools') {
-    return await Mdx.tool(file, context);
-  }
+async function fromMdx(file, context, kind, baseDir) {
+  const extendedContext = { ...context, __baseDir: baseDir };
+
+  if (kind === 'prompts') return await Mdx.prompt(file, extendedContext);
+  if (kind === 'resources') return await Mdx.resource(file, extendedContext);
+  if (kind === 'tools') return await Mdx.tool(file, extendedContext);
+
   return null;
 }
 
