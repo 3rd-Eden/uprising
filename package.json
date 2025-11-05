@@ -1,6 +1,6 @@
 {
   "name": "uprising",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Filesystem-driven MCP server bootstrapper for tools, resources, and prompts.",
   "keywords": [
     "uprising",
