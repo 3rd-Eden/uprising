@@ -3,8 +3,10 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import diagnostics from 'diagnostics';
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import matter from 'gray-matter';
 import { discover } from './discovery.js';
 import { normalize } from './normalize.js';
+import { interpolate } from './mdx/utils.js';
 
 const debug = diagnostics('uprising:mcp');
 
@@ -137,21 +139,7 @@ export class Uprising {
    * @returns {string} Rendered string with placeholders replaced when data is available.
    */
   template(input, data) {
-    return input.replace(/{{\s*([\w.]+)\s*}}/g, (match, key) => {
-      let value = data;
-      for (const segment of key.split('.')) {
-        if (value && typeof value === 'object' && segment in value) {
-          value = value[segment];
-        } else {
-          value = undefined;
-          break;
-        }
-      }
-
-      if (value === undefined || value === null) return match;
-      if (typeof value === 'object') return JSON.stringify(value);
-      return String(value);
-    });
+    return interpolate(input, data);
   }
 
   /**
@@ -215,13 +203,19 @@ export class Uprising {
 
   /**
    * Load instructions.md from the root directory and render with template data.
+   * Supports front-matter for metadata.
    *
    * @returns {string | undefined} Rendered instruction text if present.
    */
   loadInstructions() {
     try {
-      const instructions = readFileSync(join(this.root, 'instructions.md'), 'utf8');
-      return this.template(instructions, {
+      const contents = readFileSync(join(this.root, 'instructions.md'), 'utf8');
+      const parsed = matter(contents);
+      const frontMatter = parsed.data ?? {};
+      const body = parsed.content ?? contents;
+
+      return this.template(body, {
+        ...frontMatter,
         config: this.config,
         package: this.packageInfo ?? {},
         dir: this.root
@@ -305,21 +299,7 @@ export async function start(dir, configuration = {}, transport) {
  * @returns {string} Rendered template string with placeholders replaced.
  */
 export function template(template, data) {
-  return template.replace(/{{\s*([\w.]+)\s*}}/g, (match, key) => {
-    let value = data;
-    for (const segment of key.split('.')) {
-      if (value && typeof value === 'object' && segment in value) {
-        value = value[segment];
-      } else {
-        value = undefined;
-        break;
-      }
-    }
-
-    if (value === undefined || value === null) return match;
-    if (typeof value === 'object') return JSON.stringify(value);
-    return String(value);
-  });
+  return interpolate(template, data);
 }
 
 /**

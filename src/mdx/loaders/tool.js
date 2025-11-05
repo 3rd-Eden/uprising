@@ -83,7 +83,7 @@ export class ToolLoader extends BaseLoader {
     const handler = this.handler;
 
     if (typeof handler !== 'function') {
-      throw new Error(`Tool ${name} is missing a <Handler> definition (${this.file}).`);
+      throw new Error(`Tool ${name} is missing an <Exec> definition (${this.file}).`);
     }
 
     return {

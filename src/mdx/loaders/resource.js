@@ -29,7 +29,9 @@ export class ResourceLoader extends BaseLoader {
    * @returns {Promise<void>}
    */
   async prepare() {
-    this.renderer = await this.compile();
+    // Only compile .mdx files; .md files are treated as plain markdown with template syntax
+    const isMdx = this.file.endsWith('.mdx');
+    this.renderer = isMdx ? await this.compile() : null;
     const blueprint = this.render({ params: {} });
     this.mime = blueprint.mime ?? this.frontMatter.mime ?? 'text/markdown';
     this.listing = blueprint.listing ?? [];
@@ -106,7 +108,13 @@ export class ResourceLoader extends BaseLoader {
         const resolvedUri = params.uri ?? fillUri(uri, params);
         const context = { params, uri: resolvedUri };
         const value = this.render({ params });
-        const text = interpolate(value.text, { params, context, config: this.context.config });
+        const text = interpolate(value.text, {
+          ...this.frontMatter,
+          params,
+          context,
+          config: this.context.config,
+          package: this.context.package ?? {}
+        });
 
         return {
           contents: [

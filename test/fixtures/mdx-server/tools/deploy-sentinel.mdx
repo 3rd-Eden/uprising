@@ -12,7 +12,7 @@ annotations:
 <Output name="sector" type="string" />
 <Output name="count" type="integer" />
 
-<Handler>
+<Exec>
   {async ({ sector, count }, ctx) => {
     const total = count ?? ctx.config?.defaultDroneCount ?? 1;
     return {
@@ -20,7 +20,7 @@ annotations:
       content: [{ type: 'text', text: `Dispatching ${total} sentinel drone(s) to sector ${sector}.` }]
     };
   }}
-</Handler>
+</Exec>
 
 <Example title="Single drone">
   <Call arguments={{ sector: 'omega' }} />

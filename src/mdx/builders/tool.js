@@ -25,10 +25,10 @@ export class ToolBuilder {
    */
   components() {
     return {
-      Input: (props) => this.addInput(props),
-      Output: (props) => this.addOutput(props),
-      Handler: (props) => this.setHandler(props),
-      Example: (props) => this.addExample(props),
+      Input: (props) => this.input(props),
+      Output: (props) => this.output(props),
+      Exec: (props) => this.exec(props),
+      Example: (props) => this.example(props),
       Call: (props) => ({ type: 'call', props }),
       Response: (props) => ({ type: 'response', props }),
     };
@@ -41,7 +41,7 @@ export class ToolBuilder {
    * @param {string} props.name - Input parameter name.
    * @returns {null}
    */
-  addInput({ name, ...rest }) {
+  input({ name, ...rest }) {
     if (!name) return null;
     this.inputs[name] = { ...rest };
     return null;
@@ -54,20 +54,20 @@ export class ToolBuilder {
    * @param {string} props.name - Output field name.
    * @returns {null}
    */
-  addOutput({ name, ...rest }) {
+  output({ name, ...rest }) {
     if (!name) return null;
     this.outputs[name] = { ...rest };
     return null;
   }
 
   /**
-   * Handle <Handler> component to set the tool execution function.
+   * Handle <Exec> component to set the tool execution function.
    *
    * @param {Object} props - Component properties.
-   * @param {Function|Function[]} props.children - Handler function or array containing handler.
+   * @param {Function|Function[]} props.children - Execution function or array containing function.
    * @returns {null}
    */
-  setHandler({ children }) {
+  exec({ children }) {
     const fn = Array.isArray(children)
       ? children.find((child) => typeof child === 'function')
       : typeof children === 'function'
@@ -87,7 +87,7 @@ export class ToolBuilder {
    * @param {any} [props.children] - Example content with Call and Response components.
    * @returns {null}
    */
-  addExample({ title, children }) {
+  example({ title, children }) {
     const nodes = Array.isArray(children) ? children : [children];
     const example = { title, call: null, response: null };
     for (const node of nodes) {

@@ -70,6 +70,23 @@ describe('Uprising', () => {
 
     const prompt = await client.getPrompt({ name: 'uprising-plan', arguments: { objective: 'fortify' } });
     assert.equal(prompt.messages[0].role, 'assistant');
+
+    // Verify plain .md files with front-matter work
+    assert.ok(prompts.includes('simple-prompt'), 'plain .md prompt should be discovered');
+    assert.ok(resources.includes('simple-resource'), 'plain .md resource should be discovered');
+
+    // Test plain .md prompt execution with template interpolation
+    const mdPrompt = await client.getPrompt({ name: 'simple-prompt', arguments: { task: 'test task' } });
+    assert.equal(mdPrompt.messages.length, 1);
+    assert.match(mdPrompt.messages[0].content.text, /helpful assistant/);
+    assert.match(mdPrompt.messages[0].content.text, /test task/);
+    assert.equal(mdPrompt.messages[0].role, 'assistant');
+
+    // Test plain .md resource read
+    const mdResource = await client.readResource({ uri: 'resource://simple-docs' });
+    assert.equal(mdResource.contents[0].mimeType, 'text/markdown');
+    assert.match(mdResource.contents[0].text, /Simple Documentation/);
+    assert.match(mdResource.contents[0].text, /No MDX components needed/);
   });
 
   it('normalizes hangar fixtures and skips invalid definitions', async () => {

@@ -1,7 +1,7 @@
 import { BaseLoader } from './base.js';
 import { PromptBuilder } from '../builders/prompt.js';
 import { withScope } from '../runtime.js';
-import { mergeSchemas, normalizeArgsSchema, inferName, capitalize } from '../utils.js';
+import { mergeSchemas, normalizeArgsSchema, inferName, capitalize, interpolate } from '../utils.js';
 
 /**
  * Loader for prompt definitions from MDX files.
@@ -28,7 +28,9 @@ export class PromptLoader extends BaseLoader {
    * @returns {Promise<void>}
    */
   async prepare() {
-    this.renderer = await this.compile();
+    // Only compile .mdx files; .md files are treated as plain markdown with template syntax
+    const isMdx = this.file.endsWith('.mdx');
+    this.renderer = isMdx ? await this.compile() : null;
     const blueprint = this.render({}, {});
     this.schema = mergeSchemas(this.frontMatter.argsSchema, blueprint.schema);
     this.resources = blueprint.resources;
@@ -91,7 +93,17 @@ export class PromptLoader extends BaseLoader {
         const messages = output.messages.map((message) => ({
           role: message.role,
           name: message.name,
-          content: { type: 'text', text: message.text },
+          content: {
+            type: 'text',
+            text: interpolate(message.text, {
+              ...this.frontMatter,
+              args,
+              params: extra.params ?? {},
+              context: extra,
+              config: this.context.config,
+              package: this.context.package ?? {}
+            })
+          },
         }));
 
         const response = { messages };
